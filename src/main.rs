@@ -80,11 +80,12 @@ fn handle_poll(
 ) -> HandleResult {
     let tail = tail.trim();
     if let Some(idx) = tail.find(char::is_whitespace) {
-        let (cmd, tail) = tail.split_at(idx);
+        let (cmd, cmd_tail) = tail.split_at(idx);
         match cmd {
-            "vote" => handle_poll_vote(bot, message, tail, poll_map),
-            "close" => handle_poll_close(bot, message, tail, poll_map),
-            "new" | _ => handle_poll_new(bot, message, tail, poll_map),
+            "vote" => handle_poll_vote(bot, message, cmd_tail, poll_map),
+            "close" => handle_poll_close(bot, message, cmd_tail, poll_map),
+            "new" => handle_poll_new(bot, message, cmd_tail, poll_map),
+            _ => handle_poll_new(bot, message, tail, poll_map),
         }
     } else if tail == "list" {
         handle_poll_list(bot, message, tail, poll_map)
@@ -134,12 +135,15 @@ fn handle_poll_vote(
     if !guard.contains_key(&message.room) || tail.len() != 2 {
         statement.push_str("Vote takes 2 arguments, poll number and choice");
     } else {
-        // Get the arguments
+        // Get the arguments, check to see if it's two usize first
         match (
             tail[0].trim().parse::<usize>(),
             tail[1].trim().parse::<usize>(),
         ) {
             (Ok(poll), Ok(vote)) => {
+                // We have a poll number and an option number.
+                // Get the poll from the map, and make sure the numbers
+                // are valid,a nd then count the vote
                 let list = guard.get_mut(&message.room).unwrap();
                 if let Some(poll) = list.get_mut(poll) {
                     if let Some(poll_item) = poll.options.get_mut(vote) {
@@ -157,16 +161,40 @@ fn handle_poll_vote(
                     statement.push_str("Invalid poll");
                 }
             }
+            (Ok(poll), _) => {
+                // We got a poll number and then... something else. See if we can
+                // match the "something else" with the description of one of the options
+                let list = guard.get_mut(&message.room).unwrap();
+                if let Some(poll) = list.get_mut(poll) {
+
+                    // Combine the collection of str into a single str to use for
+                    // comparison
+                    let vote_str = tail[1..].join(" ").trim().to_lowercase();
+                    for mut option in poll.options.iter_mut() {
+                        if option.description == vote_str {
+                            option.count += 1;
+                            writeln!(
+                                &mut statement,
+                                "{} voted for {}",
+                                message.sender, option.description
+                            )
+                            .unwrap();
+                        }
+                    }
+                }
+            }
             _ => statement.push_str("Vote takes 2 arguments, poll number and choice"),
         }
     }
+
+    // Respond with the generated message
     bot.send_message(&statement, &message.room, MessageType::TextMessage);
     HandleResult::StopHandling
 }
 
 fn get_poll_results_string(poll: &Poll) -> String {
     let mut results = String::new();
-    writeln!(&mut results, "Results of poll {}:", poll.question).unwrap();
+    writeln!(&mut results, "Results of poll: {}", poll.question).unwrap();
     for option in poll.options.iter() {
         writeln!(&mut results, "{}: {}", option.description, option.count).unwrap();
     }
