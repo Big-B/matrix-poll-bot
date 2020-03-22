@@ -170,7 +170,8 @@ fn handle_poll_vote(
 
                     // Combine the collection of str into a single str to use for
                     // comparison
-                    let vote_str = tail[1..].join(" ").trim().to_lowercase();
+                    let vote_str = tail[1..].join(" ");
+                    let vote_str = vote_str.trim();
                     for mut option in poll.options.iter_mut() {
                         if option.description == vote_str {
                             option.count += 1;
