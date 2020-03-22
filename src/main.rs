@@ -90,7 +90,7 @@ fn handle_poll(
     } else if tail == "list" {
         handle_poll_list(bot, message, tail, poll_map)
     } else {
-        HandleResult::StopHandling
+        handle_poll_new(bot, message, tail, poll_map)
     }
 }
 
