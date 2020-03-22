@@ -1,3 +1,4 @@
+#![feature(map_first_last)]
 mod statefull_handler;
 mod unique_id_list;
 use matrix_bot_api::handlers::{HandleResult, StatelessHandler};
