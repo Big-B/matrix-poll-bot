@@ -82,15 +82,15 @@ fn handle_poll(
     if let Some(idx) = tail.find(char::is_whitespace) {
         let (cmd, tail) = tail.split_at(idx);
         match cmd {
-            "new" => handle_poll_new(bot, message, tail, poll_map),
             "vote" => handle_poll_vote(bot, message, tail, poll_map),
             "close" => handle_poll_close(bot, message, tail, poll_map),
-            _ => HandleResult::StopHandling,
+            "new" | _ => handle_poll_new(bot, message, tail, poll_map),
         }
     } else if tail == "list" {
         handle_poll_list(bot, message, tail, poll_map)
     } else {
-        handle_poll_new(bot, message, tail, poll_map)
+        bot.send_message(HELP_MSG, &message.room, MessageType::TextMessage);
+        HandleResult::StopHandling
     }
 }
 
