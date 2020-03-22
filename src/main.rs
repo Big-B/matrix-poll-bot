@@ -24,16 +24,11 @@ struct MatrixInfo {
     hs_url: String,
 }
 
-#[derive(Debug, PartialEq, Eq, Hash)]
-struct PollItem {
-    count: usize,
-    description: String,
-}
-
 #[derive(Debug)]
 struct Poll {
     question: String,
-    options: Vec<PollItem>,
+    options: Vec<String>,
+    votes: HashMap<String, usize>,
 }
 
 static HELP_MSG: &str = r#"help - print this help message.
@@ -109,7 +104,7 @@ fn handle_poll_list(
         for (k, v) in list.iter() {
             writeln!(&mut statement, "Poll {}: {}", k, v.question).unwrap();
             for (i, option) in v.options.iter().enumerate() {
-                writeln!(&mut statement, "\t{}: {}", i, option.description).unwrap();
+                writeln!(&mut statement, "\t{}: {}", i, option).unwrap();
             }
         }
     }
@@ -148,13 +143,9 @@ fn handle_poll_vote(
                 let list = guard.get_mut(&message.room).unwrap();
                 if let Some(poll) = list.get_mut(poll) {
                     if let Some(poll_item) = poll.options.get_mut(vote) {
-                        poll_item.count += 1;
-                        writeln!(
-                            &mut statement,
-                            "{} voted for {}",
-                            message.sender, poll_item.description
-                        )
-                        .unwrap();
+                        poll.votes.insert(message.sender.clone(), vote);
+                        writeln!(&mut statement, "{} voted for {}", message.sender, poll_item)
+                            .unwrap();
                     } else {
                         statement.push_str("Invalid vote option");
                     }
@@ -167,20 +158,15 @@ fn handle_poll_vote(
                 // match the "something else" with the description of one of the options
                 let list = guard.get_mut(&message.room).unwrap();
                 if let Some(poll) = list.get_mut(poll) {
-
                     // Combine the collection of str into a single str to use for
                     // comparison
                     let vote_str = tail[1..].join(" ");
                     let vote_str = vote_str.trim();
-                    for mut option in poll.options.iter_mut() {
-                        if option.description == vote_str {
-                            option.count += 1;
-                            writeln!(
-                                &mut statement,
-                                "{} voted for {}",
-                                message.sender, option.description
-                            )
-                            .unwrap();
+                    for (i, option) in poll.options.iter().enumerate() {
+                        if option == vote_str {
+                            poll.votes.insert(message.sender.clone(), i);
+                            writeln!(&mut statement, "{} voted for {}", message.sender, option)
+                                .unwrap();
                         }
                     }
                 }
@@ -196,9 +182,21 @@ fn handle_poll_vote(
 
 fn get_poll_results_string(poll: &Poll) -> String {
     let mut results = String::new();
+    let mut tally = HashMap::new();
+
+    for (_voter, vote) in poll.votes.iter() {
+        let entry = tally.entry(vote).or_insert(0);
+        *entry += 1;
+    }
     writeln!(&mut results, "Results of poll: {}", poll.question).unwrap();
-    for option in poll.options.iter() {
-        writeln!(&mut results, "{}: {}", option.description, option.count).unwrap();
+    for (i, option) in poll.options.iter().enumerate() {
+        writeln!(
+            &mut results,
+            "{}: {}",
+            option,
+            tally.get(&i).unwrap_or(&0)
+        )
+        .unwrap();
     }
     results
 }
@@ -218,7 +216,7 @@ fn handle_poll_close(
         if let Ok(poll_num) = tail.trim().parse::<usize>() {
             match map.remove(poll_num) {
                 Some(poll) => {
-                    writeln!(&mut statement, "Poll {} removed.", poll_num).unwrap();
+                    writeln!(&mut statement, "Poll {} closed.", poll_num).unwrap();
                     statement += &get_poll_results_string(&poll);
                 }
                 None => writeln!(&mut statement, "Invalid Index.").unwrap(),
@@ -264,6 +262,7 @@ fn handle_poll_new(
         let mut poll = Poll {
             question: question.to_owned(),
             options: Vec::new(),
+            votes: HashMap::new(),
         };
 
         // Use a set to deduplicate entries
@@ -277,10 +276,7 @@ fn handle_poll_new(
             }
 
             // Don't care if it's inserted or not
-            let _ = set.insert(PollItem {
-                count: 0,
-                description: line.to_owned(),
-            });
+            let _ = set.insert(line.to_owned());
         }
 
         // Collect into a vector
@@ -309,7 +305,7 @@ fn handle_poll_new(
         writeln!(&mut statement, "Poll #{}", index).unwrap();
         writeln!(&mut statement, "{}", question).unwrap();
         for (i, option) in list.get(index).unwrap().options.iter().enumerate() {
-            writeln!(&mut statement, "{}. {}", i, option.description).unwrap();
+            writeln!(&mut statement, "{}. {}", i, option).unwrap();
         }
 
         // Send message to the users
